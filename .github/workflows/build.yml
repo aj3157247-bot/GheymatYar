@@ -13,17 +13,8 @@ jobs:
 
     steps:
 
-      # ==================================================
-      # Checkout
-      # ==================================================
-
       - name: Checkout
         uses: actions/checkout@v4
-
-
-      # ==================================================
-      # Java 17
-      # ==================================================
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -31,25 +22,14 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-
-      # ==================================================
-      # Python 3.11
-      # ==================================================
-
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-
-      # ==================================================
-      # System dependencies
-      # ==================================================
-
       - name: Install system dependencies
         run: |
           sudo apt-get update
-
           sudo apt-get install -y \
             git \
             zip \
@@ -64,212 +44,66 @@ jobs:
             libncurses5 \
             libncurses5-dev
 
-
-      # ==================================================
-      # Python tools
-      # ==================================================
-
-      - name: Upgrade pip
+      - name: Install Build tools
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install --upgrade setuptools wheel
-
-
-      # ==================================================
-      # Buildozer
-      # ==================================================
-
-      - name: Install Buildozer
-        run: |
+          python -m pip install --upgrade pip setuptools wheel
           python -m pip install buildozer==1.5.0
           python -m pip install cython==0.29.36
-
-
-      # ==================================================
-      # Persian dependencies
-      # ==================================================
-
-      - name: Install Persian dependencies
-        run: |
           python -m pip install arabic-reshaper==3.0.0
           python -m pip install python-bidi==0.6.6
 
-
-      # ==================================================
-      # Show environment
-      # ==================================================
-
       - name: Show environment
         run: |
-          echo "========== PYTHON =========="
           python --version
-
-          echo "========== PIP =========="
-          python -m pip --version
-
-          echo "========== BUILDOZER =========="
+          pip --version
           buildozer --version
-
-          echo "========== CYTHON =========="
           cython --version
-
-          echo "========== JAVA =========="
           java -version
 
-          echo "========== PROJECT =========="
-          find . -maxdepth 3 -type f | sort
-
-
-      # ==================================================
-      # Build APK
-      #
-      # IMPORTANT:
-      # We save the complete Buildozer output to a log file.
-      # ==================================================
-
       - name: Build APK
-        id: build_apk
+        id: build
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
+          buildozer android debug 2>&1 | tee build.log
+          exit ${PIPESTATUS[0]}
 
-          echo "========== BUILD START ==========" | tee build.log
-
-          buildozer android debug 2>&1 | tee -a build.log
-
-          BUILD_EXIT=${PIPESTATUS[0]}
-
-          echo "" | tee -a build.log
-          echo "========== BUILD EXIT CODE ==========" | tee -a build.log
-          echo "$BUILD_EXIT" | tee -a build.log
-
-          exit $BUILD_EXIT
-
-
-      # ==================================================
-      # Collect diagnostic information
-      # ==================================================
-
-      - name: Collect diagnostic information
+      - name: Create diagnostic package
         if: always()
         shell: bash
         run: |
           mkdir -p diagnostic
 
-          echo "========== DATE ==========" \
-            > diagnostic/environment.txt
+          cp build.log diagnostic/build.log
 
-          date \
+          python --version > diagnostic/environment.txt 2>&1
+          pip --version >> diagnostic/environment.txt 2>&1
+          buildozer --version >> diagnostic/environment.txt 2>&1
+          cython --version >> diagnostic/environment.txt 2>&1
+          java -version >> diagnostic/environment.txt 2>&1
+
+          echo "" >> diagnostic/environment.txt
+          echo "========== BUILD RESULT ==========" >> diagnostic/environment.txt
+          echo "${{ steps.build.outcome }}" >> diagnostic/environment.txt
+
+          echo "" >> diagnostic/environment.txt
+          echo "========== PROJECT FILES ==========" >> diagnostic/environment.txt
+          find . -maxdepth 4 \
+            -type f \
+            ! -path "./.buildozer/*" \
+            ! -path "./.git/*" \
             >> diagnostic/environment.txt
 
-          echo "" \
-            >> diagnostic/environment.txt
+          zip -r GheymatYar-Diagnostic.zip diagnostic
 
-          echo "========== PYTHON ==========" \
-            >> diagnostic/environment.txt
-
-          python --version \
-            >> diagnostic/environment.txt 2>&1
-
-          echo "" \
-            >> diagnostic/environment.txt
-
-          echo "========== PIP ==========" \
-            >> diagnostic/environment.txt
-
-          python -m pip --version \
-            >> diagnostic/environment.txt 2>&1
-
-          echo "" \
-            >> diagnostic/environment.txt
-
-          echo "========== BUILDOZER ==========" \
-            >> diagnostic/environment.txt
-
-          buildozer --version \
-            >> diagnostic/environment.txt 2>&1
-
-          echo "" \
-            >> diagnostic/environment.txt
-
-          echo "========== CYTHON ==========" \
-            >> diagnostic/environment.txt
-
-          cython --version \
-            >> diagnostic/environment.txt 2>&1
-
-          echo "" \
-            >> diagnostic/environment.txt
-
-          echo "========== JAVA ==========" \
-            >> diagnostic/environment.txt
-
-          java -version \
-            >> diagnostic/environment.txt 2>&1
-
-          echo "" \
-            >> diagnostic/environment.txt
-
-          echo "========== PROJECT FILES ==========" \
-            >> diagnostic/environment.txt
-
-          find . -maxdepth 4 -type f \
-            >> diagnostic/environment.txt 2>&1
-
-          echo "" \
-            >> diagnostic/environment.txt
-
-          echo "========== BUILD DIRECTORY ==========" \
-            >> diagnostic/environment.txt
-
-          find .buildozer -maxdepth 5 -type f \
-            >> diagnostic/environment.txt 2>&1 || true
-
-          cp build.log diagnostic/build.log 2>/dev/null || true
-
-
-      # ==================================================
-      # Package complete logs
-      # ==================================================
-
-      - name: Create diagnostic ZIP
-        if: always()
-        shell: bash
-        run: |
-          mkdir -p diagnostic_zip
-
-          cp -r diagnostic diagnostic_zip/
-
-          if [ -d ".buildozer" ]; then
-            mkdir -p diagnostic_zip/buildozer
-            cp -r .buildozer diagnostic_zip/buildozer/
-          fi
-
-          if [ -d "bin" ]; then
-            mkdir -p diagnostic_zip/bin
-            cp -r bin diagnostic_zip/bin/
-          fi
-
-          zip -r GheymatYar-Diagnostic.zip diagnostic_zip
-
-
-      # ==================================================
-      # Upload diagnostic ZIP
-      # ==================================================
-
-      - name: Upload diagnostic ZIP
+      - name: Upload diagnostic
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: GheymatYar-Diagnostic
           path: GheymatYar-Diagnostic.zip
-          if-no-files-found: warn
-
-
-      # ==================================================
-      # Upload APK if it exists
-      # ==================================================
+          if-no-files-found: error
 
       - name: Upload APK
         if: always()
@@ -279,14 +113,9 @@ jobs:
           path: bin/*.apk
           if-no-files-found: ignore
 
-
-      # ==================================================
-      # Fail workflow if build failed
-      # ==================================================
-
-      - name: Check build result
-        if: steps.build_apk.outcome == 'failure'
+      - name: Fail if build failed
+        if: steps.build.outcome == 'failure'
         run: |
-          echo "GheymatYar APK build failed."
-          echo "Download the GheymatYar-Diagnostic artifact."
+          echo "APK build failed."
+          echo "Download GheymatYar-Diagnostic artifact."
           exit 1
