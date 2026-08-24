@@ -1,2 +1,12 @@
-arabic-reshaper==3.0.0
-python-bidi==0.6.6
+# GheymatYar - Android requirements
+#
+# IMPORTANT:
+# Do not add requests, urllib3, charset-normalizer,
+# arabic-reshaper or python-bidi here.
+#
+# Those packages were causing the Android wheel error:
+# charset_normalizer-3.5.1-cp314-cp314-android_24_arm64_v8a.whl
+
+# Intentionally empty.
+#
+# Android dependencies are controlled by buildozer.spec.
